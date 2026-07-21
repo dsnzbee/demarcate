@@ -19,6 +19,7 @@ import LearnAWS from './LearnAWS.jsx'
 import './index.css'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const AWS_MUTATIONS_ENABLED = import.meta.env.VITE_ENABLE_AWS_MUTATIONS === 'true'
 
 const DEMO_ROWS = [
   {
@@ -653,7 +654,7 @@ function App() {
                           <td><div className="recommendation-cell"><code>{row.recommended_type}</code>{row.recommendation === 'downsize' && <span className={verdict === 'hold_off' && guardrailEnabled ? 'hold-label' : 'resize-label'}>{verdict === 'hold_off' && guardrailEnabled ? 'hold' : 'resize'}</span>}</div></td>
                           <td><strong className={savings ? 'savings-value' : 'muted-value'}>{savings ? `+${formatCurrency(savings)}` : '—'}</strong></td>
                           <td><span className={`risk-badge ${meta.tone}`}><span className="risk-dot" aria-hidden="true" />{meta.label}</span></td>
-                          <td><div className="table-actions">{row.final_verdict === 'safe_to_downsize' && <button type="button" className="apply-row-button" disabled={applyLoading} onClick={(event) => { event.preventDefault(); openApplyPopover(event, row) }}>Apply</button>}<button type="button" className="row-arrow" aria-label={`Open ${row.instance_id}`}><Icon name="arrow" size={15} /></button></div></td>
+                          <td><div className="table-actions">{AWS_MUTATIONS_ENABLED && row.final_verdict === 'safe_to_downsize' && <button type="button" className="apply-row-button" disabled={applyLoading} onClick={(event) => { event.preventDefault(); openApplyPopover(event, row) }}>Apply</button>}<button type="button" className="row-arrow" aria-label={`Open ${row.instance_id}`}><Icon name="arrow" size={15} /></button></div></td>
                         </tr>
                       )
                     })}

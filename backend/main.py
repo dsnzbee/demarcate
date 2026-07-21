@@ -91,6 +91,13 @@ ENV_AWS_CREDENTIALS = {
     "aws_region": os.getenv("AWS_DEFAULT_REGION"),
 }
 
+AWS_MUTATIONS_ENABLED = os.getenv("ENABLE_AWS_MUTATIONS", "false").lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+
 # Hackathon-only shortcut: credentials live in this server process memory and
 # are never written to the database or disk. A real product should use an
 # OAuth-style flow with IAM role assumption instead of storing raw keys.
@@ -327,6 +334,12 @@ def apply_recommendation(request: ApplyRecommendationRequest):
     EC2 instance type changes require a stop -> modify -> start sequence, so
     this endpoint causes brief, real downtime for the selected instance.
     """
+    if not AWS_MUTATIONS_ENABLED:
+        raise HTTPException(
+            status_code=403,
+            detail="AWS resize actions are disabled for this public deployment.",
+        )
+
     instance_id = request.instance_id
     current_type = INSTANCE_TYPES.get(instance_id)
 
