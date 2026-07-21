@@ -82,6 +82,8 @@ const SYNTHETIC_BASELINES = {
   server_1: 13, server_2: 26, server_3: 43, server_4: 59, server_5: 34, server_6: 9,
 }
 
+const SYNTHETIC_CHART_WINDOW = 72
+
 const formatCurrency = (value) => new Intl.NumberFormat('en-US', {
   style: 'currency', currency: 'USD', maximumFractionDigits: 2,
 }).format(value || 0)
@@ -385,7 +387,13 @@ function App() {
     }
   }, [applyTarget])
 
-  const chartData = useMemo(() => withForecast(metrics), [metrics])
+  const chartData = useMemo(() => {
+    const isSynthetic = selected?.instance_id?.startsWith('server_')
+    const visibleMetrics = isSynthetic && metrics.length > SYNTHETIC_CHART_WINDOW
+      ? metrics.slice(-SYNTHETIC_CHART_WINDOW)
+      : metrics
+    return withForecast(visibleMetrics)
+  }, [metrics, selected?.instance_id])
   const memoryAvailable = chartData.some((point) => point.memory_utilization !== null && point.memory_utilization !== undefined && Number.isFinite(Number(point.memory_utilization)))
 
   useEffect(() => {
