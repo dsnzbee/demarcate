@@ -472,6 +472,13 @@ function App() {
   const deferredSavings = Math.max(0, totalUnprotectedSavings - totalPotentialSavings)
   const highRiskCount = rows.filter((row) => row.surge_risk).length
   const resizeCount = rows.filter((row) => row.recommendation === 'downsize').length
+  const actionableResizeCount = rows.filter((row) => effectiveVerdict(row) === 'safe_to_downsize').length
+  const operationalTimestamp = useMemo(() => new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(new Date()), [])
   const selectedVerdict = selected?.surge_risk ? 'surge-risk' : selected ? effectiveVerdict(selected).replaceAll('_', '-') : 'no-change'
   const selectedVerdictLabel = selected?.surge_risk ? 'surge risk' : selected ? effectiveVerdict(selected).replaceAll('_', ' ') : 'no change'
 
@@ -671,12 +678,12 @@ function App() {
             </div>
             <div className="hero-readout" id="recommendations">
               <div className="readout-content">
-                <div className="readout-topline"><span>Operational readout</span><span>Today, 14:32 IST</span></div>
+                <div className="readout-topline"><span>Operational readout</span><span>Today, {operationalTimestamp} IST</span></div>
                 <div className={`readout-main ${readoutLoading ? 'is-loading' : 'is-ready'}`}><span>Protected monthly savings</span><strong className="readout-price saved-price" aria-live="polite">{readoutLoading ? <span className="price-skeleton-bar" aria-label="Calculating savings" /> : `−${formatCurrency(totalPotentialSavings)}`}</strong><p>{readoutLoading ? 'Analyzing telemetry and surge context' : 'With DeMarcate'}</p></div>
-                <div className="readout-grid"><div><span className="metric-label">Recommendations <InfoTip label="What are recommendations?" placement="bottom-right">Recommendations that are currently safe to apply under DeMarcate's surge guardrail.</InfoTip></span><b>{resizeCount}</b></div><div><span className="metric-label">Surge signals <InfoTip label="What are surge signals?" placement="bottom">Instances whose recent CPU usage is running significantly above their historical baseline.</InfoTip></span><b>{highRiskCount}</b></div><div><span className="metric-label">Confidence <InfoTip label="How is confidence calculated?" placement="bottom-left">A combined read of CPU p95, telemetry coverage, and near-term surge context.</InfoTip></span><b>94%</b></div></div>
+                <div className="readout-grid"><div><span className="metric-label">Recommendations <InfoTip label="What are recommendations?" placement="bottom-right">Recommendations that are currently safe to apply under DeMarcate's surge guardrail.</InfoTip></span><b>{actionableResizeCount}</b></div><div><span className="metric-label">Surge signals <InfoTip label="What are surge signals?" placement="bottom">Instances whose recent CPU usage is running significantly above their historical baseline.</InfoTip></span><b>{highRiskCount}</b></div><div><span className="metric-label">Confidence <InfoTip label="How is confidence calculated?" placement="bottom-left">A combined read of CPU p95, telemetry coverage, and near-term surge context.</InfoTip></span><b>94%</b></div></div>
                 <div className="scenario-control">
                   <div className="scenario-label"><span>Decision comparison <InfoTip label="What is Decision comparison?">Compares potential savings if surge risk is ignored with the savings DeMarcate allows after its guardrail.</InfoTip></span><b>Before / after</b></div>
-                  <div className={`comparison-values ${readoutLoading ? 'is-loading' : 'is-ready'}`}><div className="before-price"><small>Before guardrail</small>{readoutLoading ? <span className="price-skeleton-small" aria-label="Loading before price" /> : <strong>{formatCurrency(totalUnprotectedSavings)}</strong>}</div><span>→</span><div className="after-price"><small>After guardrail</small>{readoutLoading ? <span className="price-skeleton-small" aria-label="Loading after price" /> : <><strong>{formatCurrency(deferredSavings)}</strong>{guardrailEnabled && totalPotentialSavings > 0 && <small className="reduction-value">−{formatCurrency(totalPotentialSavings)} reduced</small>}</>}</div></div>
+                  <div className={`comparison-values ${readoutLoading ? 'is-loading' : 'is-ready'}`}><div className="before-price"><small>Before guardrail</small>{readoutLoading ? <span className="price-skeleton-small" aria-label="Loading before price" /> : <strong>{formatCurrency(totalUnprotectedSavings)}</strong>}</div><span>→</span><div className="after-price"><small>After guardrail</small>{readoutLoading ? <span className="price-skeleton-small" aria-label="Loading after price" /> : <><strong>{formatCurrency(totalPotentialSavings)}</strong>{guardrailEnabled && deferredSavings > 0 && <small className="reduction-value">−{formatCurrency(deferredSavings)} deferred</small>}</>}</div></div>
                 </div>
               </div>
             </div>
