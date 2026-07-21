@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: demarcate-backend
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /
+    autoDeployTrigger: commit
+    envVars:
+      - key: ENABLE_AWS_MUTATIONS
+        value: "false"
