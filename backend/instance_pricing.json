@@ -1,0 +1,32 @@
+{
+  "t3.nano": {
+    "vcpu": 2,
+    "ram_gb": 0.5,
+    "hourly_price_usd": 0.0052,
+    "one_size_down": null
+  },
+  "t3.micro": {
+    "vcpu": 2,
+    "ram_gb": 1,
+    "hourly_price_usd": 0.0104,
+    "one_size_down": "t3.nano"
+  },
+  "t3.small": {
+    "vcpu": 2,
+    "ram_gb": 2,
+    "hourly_price_usd": 0.0208,
+    "one_size_down": "t3.micro"
+  },
+  "t3.medium": {
+    "vcpu": 2,
+    "ram_gb": 4,
+    "hourly_price_usd": 0.0416,
+    "one_size_down": "t3.small"
+  },
+  "t3.large": {
+    "vcpu": 2,
+    "ram_gb": 8,
+    "hourly_price_usd": 0.0832,
+    "one_size_down": "t3.medium"
+  }
+}
