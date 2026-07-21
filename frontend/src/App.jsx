@@ -19,6 +19,9 @@ import LearnAWS from './LearnAWS.jsx'
 import './index.css'
 
 const API_BASE = (import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '')).replace(/\/$/, '')
+// The public demo keeps the Apply interaction available for presentations.
+// It intentionally never calls AWS; the confirmation flow is UI-only.
+const APPLY_UI_ONLY = true
 const DEMO_ROWS = [
   {
     instance_id: 'server_6', current_type: 't3.medium', recommended_type: 't3.small',
@@ -470,13 +473,15 @@ function App() {
     return row.final_verdict || (row.recommendation === 'downsize' ? 'safe_to_downsize' : 'no_change')
   }
 
-  const canApplyRow = (row) => row.instance_id?.startsWith('i-')
-    && awsMutationsEnabled
-    && !row.insufficient_data
-    && effectiveVerdict(row) === 'safe_to_downsize'
+  const canApplyRow = (row) => APPLY_UI_ONLY
+    && row.instance_id?.startsWith('i-')
+    && row.recommendation === 'downsize'
+    && effectiveVerdict(row) !== 'hold_off'
 
   const applyStatus = (row) => {
     if (!row.instance_id?.startsWith('i-') || row.recommendation !== 'downsize') return null
+    if (APPLY_UI_ONLY && effectiveVerdict(row) === 'hold_off') return 'On hold'
+    if (APPLY_UI_ONLY) return null
     if (!awsMutationsEnabled) return 'Enable Apply'
     if (row.insufficient_data) return 'Needs data'
     if (effectiveVerdict(row) === 'hold_off') return 'On hold'
@@ -559,6 +564,15 @@ function App() {
 
     setApplyLoading(true)
     try {
+      if (APPLY_UI_ONLY) {
+        await new Promise((resolve) => window.setTimeout(resolve, 750))
+        const target = applyTarget
+        setApplyTarget(null)
+        setApplyPopoverPosition(null)
+        showToast('success', `Demo action complete for ${target.instance_id} — no AWS changes were made.`)
+        return
+      }
+
       const response = await fetchWithTimeout(
         `${API_BASE}/apply-recommendation`,
         {
@@ -621,6 +635,7 @@ function App() {
       {debugMode && <aside className="debug-panel" role="status">
         <strong>DeMarcate debug</strong>
         <span>Backend mutations: {awsMutationsEnabled ? 'ENABLED' : 'DISABLED'}</span>
+        <span>Apply UI: {APPLY_UI_ONLY ? 'DEMO ONLY' : 'LIVE'}</span>
         <span>API state: {apiState}</span>
         <span>API base: {API_BASE || 'not configured'}</span>
         {apiError && <span>API error: {apiError}</span>}
@@ -678,8 +693,8 @@ function App() {
           </div>
           <span className="apply-popover-badge">AWS / EC2</span>
         </div>
-        <p className="apply-popover-copy">This will briefly stop and restart <strong>{applyTarget.instance_id}</strong> to change it from <strong>{applyTarget.current_type}</strong> to <strong>{applyTarget.recommended_type}</strong>. The instance will be unavailable for about 1-2 minutes during this process. Continue?</p>
-        {applyLoading && <div className="apply-popover-progress"><span className="apply-spinner" /><span>In progress, this takes a minute. AWS is waiting for the instance state to change.</span></div>}
+        <p className="apply-popover-copy">{APPLY_UI_ONLY ? <>This is a presentation-only interaction for <strong>{applyTarget.instance_id}</strong>. It will show the resize confirmation flow, but it will not change your AWS infrastructure.</> : <>This will briefly stop and restart <strong>{applyTarget.instance_id}</strong> to change it from <strong>{applyTarget.current_type}</strong> to <strong>{applyTarget.recommended_type}</strong>. The instance will be unavailable for about 1-2 minutes during this process. Continue?</>}</p>
+        {applyLoading && <div className="apply-popover-progress"><span className="apply-spinner" /><span>{APPLY_UI_ONLY ? 'Demo confirmation in progress — no AWS request is being sent.' : 'In progress, this takes a minute. AWS is waiting for the instance state to change.'}</span></div>}
         <div className="apply-popover-actions">
           <button type="button" disabled={applyLoading} onClick={() => { setApplyTarget(null); setApplyPopoverPosition(null) }}>Cancel</button>
           <button type="button" disabled={applyLoading} onClick={confirmApply}>{applyLoading ? 'Applying resize...' : 'Confirm Apply'}</button>
