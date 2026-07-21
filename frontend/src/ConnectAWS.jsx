@@ -30,7 +30,7 @@ function ConnectAWS({ onConnected, onBack }) {
     setStatus('loading')
     setMessage('')
     const controller = new AbortController()
-    const timeoutId = window.setTimeout(() => controller.abort(), 10000)
+    const timeoutId = window.setTimeout(() => controller.abort(), 60000)
 
     try {
       const response = await fetch(API_URL, {

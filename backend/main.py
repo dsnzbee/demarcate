@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import sqlite3
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import boto3
@@ -27,6 +28,7 @@ from setup_database import (
     create_database,
     get_metrics,
     load_synthetic_metrics,
+    replace_real_metrics,
 )
 from surge_predictor import detect_surge_risk
 
@@ -57,11 +59,7 @@ app.add_middleware(
 )
 
 
-# Temporary instance-type mapping for the hackathon demo.
-INSTANCE_TYPES = {
-    "i-009a5cba32360e562": "t3.micro",
-    "i-0160c3d978af80add": "t3.micro",
-    "i-08ab4da9b7626cdd0": "t3.micro",
+SYNTHETIC_INSTANCE_TYPES = {
     "server_1": "t3.medium",
     "server_2": "t3.medium",
     "server_3": "t3.large",
@@ -69,6 +67,12 @@ INSTANCE_TYPES = {
     "server_5": "t3.small",
     "server_6": "t3.medium",
 }
+
+# Synthetic workloads are always available for the public demo. Real AWS
+# instances are added here only after the user connects an AWS account.
+INSTANCE_TYPES = dict(SYNTHETIC_INSTANCE_TYPES)
+ACTIVE_AWS_INSTANCE_IDS: set[str] = set()
+AWS_METRIC_LOOKBACK_HOURS = 72
 
 
 class AWSCredentials(BaseModel):
@@ -112,6 +116,82 @@ def get_aws_session() -> boto3.Session:
         aws_secret_access_key=credentials["aws_secret_access_key"],
         region_name=credentials["aws_region"],
     )
+
+
+def sync_aws_instances(session: boto3.Session) -> int:
+    """Cache running EC2 inventory and the latest 72 hours of CPU metrics."""
+    global ACTIVE_AWS_INSTANCE_IDS
+
+    aws_config = Config(
+        connect_timeout=10,
+        read_timeout=10,
+        retries={"max_attempts": 2, "mode": "standard"},
+    )
+    ec2 = session.client("ec2", config=aws_config)
+    cloudwatch = session.client("cloudwatch", config=aws_config)
+    discovered_instances = []
+
+    paginator = ec2.get_paginator("describe_instances")
+    for page in paginator.paginate(
+        Filters=[{"Name": "instance-state-name", "Values": ["running"]}]
+    ):
+        for reservation in page.get("Reservations", []):
+            for instance in reservation.get("Instances", []):
+                discovered_instances.append(
+                    {
+                        "instance_id": instance["InstanceId"],
+                        "instance_type": instance.get("InstanceType", "t3.micro"),
+                    }
+                )
+                if len(discovered_instances) >= 50:
+                    break
+            if len(discovered_instances) >= 50:
+                break
+        if len(discovered_instances) >= 50:
+            break
+
+    discovered_ids = {instance["instance_id"] for instance in discovered_instances}
+    for old_instance_id in ACTIVE_AWS_INSTANCE_IDS - discovered_ids:
+        INSTANCE_TYPES.pop(old_instance_id, None)
+
+    end_time = datetime.now(timezone.utc)
+    start_time = end_time - timedelta(hours=AWS_METRIC_LOOKBACK_HOURS)
+
+    for instance in discovered_instances:
+        instance_id = instance["instance_id"]
+        INSTANCE_TYPES[instance_id] = instance["instance_type"]
+        metric_rows = []
+
+        try:
+            response = cloudwatch.get_metric_statistics(
+                Namespace="AWS/EC2",
+                MetricName="CPUUtilization",
+                Dimensions=[{"Name": "InstanceId", "Value": instance_id}],
+                StartTime=start_time,
+                EndTime=end_time,
+                Period=3600,
+                Statistics=["Average"],
+            )
+            metric_rows = [
+                (
+                    datapoint["Timestamp"].astimezone(timezone.utc).isoformat(),
+                    float(datapoint["Average"]),
+                )
+                for datapoint in response.get("Datapoints", [])
+                if "Timestamp" in datapoint and "Average" in datapoint
+            ]
+        except (ClientError, EndpointConnectionError) as error:
+            # Inventory can still be shown if CloudWatch permission or
+            # connectivity is unavailable; those rows remain data-gapped.
+            print(
+                f"[connect-aws] Could not load CPU metrics for {instance_id}: {error}",
+                flush=True,
+            )
+
+        replace_real_metrics(instance_id, metric_rows)
+
+    ACTIVE_AWS_INSTANCE_IDS = discovered_ids
+    return len(discovered_instances)
 
 
 def serialize_metrics(metrics):
@@ -268,7 +348,16 @@ def connect_aws(credentials: AWSCredentials):
         len(reservation.get("Instances", []))
         for reservation in response.get("Reservations", [])
     )
-    return {"status": "connected", "instance_count": instance_count}
+    try:
+        synced_instance_count = sync_aws_instances(session)
+    except (ClientError, EndpointConnectionError) as error:
+        # The credentials are valid even if inventory synchronization is
+        # temporarily unavailable. The dashboard will show data gaps instead
+        # of offering an unsafe resize action.
+        print(f"[connect-aws] Could not sync AWS inventory: {error}", flush=True)
+        synced_instance_count = instance_count
+
+    return {"status": "connected", "instance_count": synced_instance_count}
 
 
 @app.get("/instances")

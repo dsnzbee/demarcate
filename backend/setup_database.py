@@ -86,6 +86,31 @@ def insert_real_metrics(
         )
 
 
+def replace_real_metrics(instance_id: str, metrics: list[tuple]) -> None:
+    """Replace the cached CloudWatch CPU metrics for one AWS instance."""
+    with sqlite3.connect(DATABASE_PATH) as connection:
+        connection.execute(
+            "DELETE FROM metrics WHERE instance_id = ? AND source = 'real'",
+            (instance_id,),
+        )
+        connection.executemany(
+            """
+            INSERT INTO metrics (
+                instance_id,
+                timestamp,
+                cpu_utilization,
+                memory_utilization,
+                source
+            )
+            VALUES (?, ?, ?, NULL, 'real')
+            """,
+            [
+                (instance_id, timestamp, cpu_utilization)
+                for timestamp, cpu_utilization in metrics
+            ],
+        )
+
+
 def get_metrics(instance_id: str) -> pd.DataFrame:
     """Return all metrics for an instance, sorted chronologically."""
     with sqlite3.connect(DATABASE_PATH) as connection:

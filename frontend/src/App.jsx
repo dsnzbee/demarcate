@@ -566,10 +566,16 @@ function App() {
     setApplyTarget(row)
   }
 
+  const handleAWSConnected = async () => {
+    setApiState('live')
+    await loadDashboard()
+    setConnectOpen(false)
+  }
+
   const popoverPosition = applyPopoverPosition || { top: 110, right: 20 }
 
   if (connectOpen) {
-    return <ConnectAWS onBack={() => setConnectOpen(false)} onConnected={() => setApiState('live')} />
+    return <ConnectAWS onBack={() => setConnectOpen(false)} onConnected={handleAWSConnected} />
   }
 
   if (learnOpen) {

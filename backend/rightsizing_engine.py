@@ -27,6 +27,17 @@ def analyze_instance(instance_id: str, current_instance_type: str) -> dict:
             params=(instance_id,),
         )
 
+    if metrics.empty:
+        return {
+            "instance_id": instance_id,
+            "current_type": current_instance_type,
+            "recommended_type": current_instance_type,
+            "p95_cpu_utilization": None,
+            "estimated_monthly_savings": 0.0,
+            "recommendation": "no_change",
+            "insufficient_data": True,
+        }
+
     p95_cpu = metrics["cpu_utilization"].quantile(0.95)
     current_price = INSTANCE_PRICING[current_instance_type]
     smaller_type = current_price["one_size_down"]
