@@ -10,4 +10,4 @@ services:
     autoDeployTrigger: commit
     envVars:
       - key: ENABLE_AWS_MUTATIONS
-        value: "false"
+        sync: false
