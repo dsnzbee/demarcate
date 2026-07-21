@@ -18,7 +18,7 @@ import ConnectAWS from './ConnectAWS.jsx'
 import LearnAWS from './LearnAWS.jsx'
 import './index.css'
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_BASE = (import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '')).replace(/\/$/, '')
 const DEMO_ROWS = [
   {
     instance_id: 'server_6', current_type: 't3.medium', recommended_type: 't3.small',
@@ -274,6 +274,7 @@ function App() {
   const [metricView, setMetricView] = useState('both')
   const [darkMode, setDarkMode] = useState(() => window.localStorage.getItem('demarcate-theme') === 'dark')
   const [apiState, setApiState] = useState('demo')
+  const [apiError, setApiError] = useState('')
   const [awsMutationsEnabled, setAwsMutationsEnabled] = useState(false)
   const detailPickerRef = useRef(null)
   const toastTimeoutRef = useRef(null)
@@ -296,6 +297,10 @@ function App() {
 
   const loadDashboard = useCallback(async () => {
     try {
+      if (!API_BASE) {
+        throw new Error('The production backend URL is not configured. Add VITE_API_URL to the GitHub Pages environment and redeploy.')
+      }
+
       const [instancesResponse, recommendationsResponse] = await Promise.all([
         fetchWithTimeout(`${API_BASE}/instances`),
         fetchWithTimeout(`${API_BASE}/recommendations`),
@@ -315,11 +320,13 @@ function App() {
       if (nextRows.length) {
         setRows(nextRows)
         setApiState('live')
+        setApiError('')
       }
       return true
-    } catch {
+    } catch (error) {
       setAwsMutationsEnabled(false)
       setApiState('demo')
+      setApiError(error instanceof Error ? error.message : 'The live backend could not be reached.')
       return false
     }
   }, [])
@@ -463,6 +470,19 @@ function App() {
     return row.final_verdict || (row.recommendation === 'downsize' ? 'safe_to_downsize' : 'no_change')
   }
 
+  const canApplyRow = (row) => row.instance_id?.startsWith('i-')
+    && awsMutationsEnabled
+    && !row.insufficient_data
+    && effectiveVerdict(row) === 'safe_to_downsize'
+
+  const applyStatus = (row) => {
+    if (!row.instance_id?.startsWith('i-') || row.recommendation !== 'downsize') return null
+    if (!awsMutationsEnabled) return 'Enable Apply'
+    if (row.insufficient_data) return 'Needs data'
+    if (effectiveVerdict(row) === 'hold_off') return 'On hold'
+    return 'Unavailable'
+  }
+
   const totalPotentialSavings = rows.reduce((total, row) => {
     return total + (effectiveVerdict(row) === 'safe_to_downsize' ? Number(row.estimated_monthly_savings || 0) : 0)
   }, 0)
@@ -602,9 +622,12 @@ function App() {
         <strong>DeMarcate debug</strong>
         <span>Backend mutations: {awsMutationsEnabled ? 'ENABLED' : 'DISABLED'}</span>
         <span>API state: {apiState}</span>
+        <span>API base: {API_BASE || 'not configured'}</span>
+        {apiError && <span>API error: {apiError}</span>}
         <span>Safe AWS rows: {rows.filter((row) => row.instance_id.startsWith('i-') && effectiveVerdict(row) === 'safe_to_downsize').length}</span>
         <pre>{rows.map((row) => `${row.instance_id} | recommendation=${row.recommendation || 'none'} | verdict=${row.final_verdict || 'none'}`).join('\n')}</pre>
       </aside>}
+      {apiState === 'demo' && apiError && <div className="api-status-banner" role="alert"><span><strong>Live AWS data is unavailable.</strong> {apiError}</span><button type="button" onClick={loadDashboard}>Retry</button></div>}
       <header className="headbar">
         <div className="headbar-inner">
           <a className="header-pill brand-pill h-12 px-4 rounded-[56px]" href="#overview" onClick={() => handleNav('overview')}>
@@ -726,7 +749,7 @@ function App() {
                           <td><div className="recommendation-cell"><code>{row.recommended_type}</code>{row.recommendation === 'downsize' && <span className={verdict === 'hold_off' && guardrailEnabled ? 'hold-label' : 'resize-label'}>{verdict === 'hold_off' && guardrailEnabled ? 'hold' : 'resize'}</span>}</div></td>
                           <td><strong className={savings ? 'savings-value' : 'muted-value'}>{savings ? `+${formatCurrency(savings)}` : '—'}</strong></td>
                           <td><span className={`risk-badge ${meta.tone}`}><span className="risk-dot" aria-hidden="true" />{meta.label}</span></td>
-                          <td><div className="table-actions">{awsMutationsEnabled && row.final_verdict === 'safe_to_downsize' && <button type="button" className="apply-row-button" disabled={applyLoading} onClick={(event) => { event.preventDefault(); openApplyPopover(event, row) }}>Apply</button>}<button type="button" className="row-arrow" aria-label={`Open ${row.instance_id}`}><Icon name="arrow" size={15} /></button></div></td>
+                          <td><div className="table-actions">{canApplyRow(row) && <button type="button" className="apply-row-button" disabled={applyLoading} onClick={(event) => { event.preventDefault(); openApplyPopover(event, row) }}>Apply</button>}{!canApplyRow(row) && applyStatus(row) && <span className="apply-status" title={applyStatus(row) === 'Enable Apply' ? 'Set ENABLE_AWS_MUTATIONS=true in Render after the backend is connected.' : applyStatus(row) === 'Needs data' ? 'CloudWatch CPU history is required before a resize can be applied.' : 'This recommendation is not currently safe to apply.'}>{applyStatus(row)}</span>}<button type="button" className="row-arrow" aria-label={`Open ${row.instance_id}`}><Icon name="arrow" size={15} /></button></div></td>
                         </tr>
                       )
                     })}

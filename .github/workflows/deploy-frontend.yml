@@ -39,6 +39,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Verify production backend URL
+        run: |
+          if [ -z "$VITE_API_URL" ]; then
+            echo "::error::The GitHub Pages variable VITE_API_URL is empty. Set it to the public Render backend URL before deploying."
+            exit 1
+          fi
+
       - name: Build frontend
         run: npm run build
 
