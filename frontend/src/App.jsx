@@ -176,6 +176,43 @@ function withForecast(metrics) {
   })
 }
 
+function findSurgeWindow(chartData) {
+  const runs = []
+  let currentRun = []
+  let previousIndex = -2
+
+  chartData.forEach((point, index) => {
+    const cpu = Number(point.cpu_utilization)
+    const expected = Number(point.expected_cpu)
+    const isSurgePoint = Number.isFinite(cpu)
+      && Number.isFinite(expected)
+      && cpu > expected * 1.4
+      && cpu - expected >= 15
+
+    if (isSurgePoint && index === previousIndex + 1) {
+      currentRun.push(point)
+    } else if (isSurgePoint) {
+      if (currentRun.length) runs.push(currentRun)
+      currentRun = [point]
+    } else if (currentRun.length) {
+      runs.push(currentRun)
+      currentRun = []
+    }
+
+    if (isSurgePoint) previousIndex = index
+  })
+
+  if (currentRun.length) runs.push(currentRun)
+  const largestRun = runs.sort((left, right) => right.length - left.length)[0]
+
+  if (!largestRun) return null
+
+  return {
+    start: largestRun[0].label,
+    end: largestRun[largestRun.length - 1].label,
+  }
+}
+
 function riskMeta(row) {
   if (row.surge_risk) return { tone: 'red', label: 'Surge risk', icon: '🔴' }
   if (row.insufficient_data) return { tone: 'amber', label: 'Data gap', icon: '🟡' }
@@ -394,6 +431,7 @@ function App() {
       : metrics
     return withForecast(visibleMetrics)
   }, [metrics, selected?.instance_id])
+  const surgeWindow = useMemo(() => findSurgeWindow(chartData), [chartData])
   const memoryAvailable = chartData.some((point) => point.memory_utilization !== null && point.memory_utilization !== undefined && Number.isFinite(Number(point.memory_utilization)))
 
   useEffect(() => {
@@ -711,7 +749,7 @@ function App() {
                     <YAxis domain={[0, 100]} axisLine={false} tickLine={false} tick={{ fill: 'var(--chart-text)', fontSize: 10 }} tickFormatter={(value) => `${value}%`} />
                     <Tooltip content={<ChartTooltip />} />
                     <ReferenceLine y={20} stroke="var(--warning)" strokeDasharray="4 4" label={{ value: 'watch', position: 'insideTopRight', fill: 'var(--warning)', fontSize: 10 }} />
-                    {selected.surge_risk && chartData.length > 24 && <ReferenceArea x1={chartData[chartData.length - 24].label} x2={chartData[chartData.length - 1].label} fill="var(--danger)" fillOpacity={0.08} label={{ value: 'SURGE WATCH', position: 'insideTopLeft', fill: 'var(--danger)', fontSize: 9 }} />}
+                    {selected.surge_risk && surgeWindow && <ReferenceArea x1={surgeWindow.start} x2={surgeWindow.end} fill="var(--danger)" fillOpacity={0.08} label={{ value: 'SURGE WATCH', position: 'insideTopLeft', fill: 'var(--danger)', fontSize: 9 }} />}
                     {(metricView === 'cpu' || metricView === 'both') && <Line type="monotone" dataKey="expected_cpu" stroke="var(--chart-baseline)" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />}
                     {(metricView === 'cpu' || metricView === 'both') && <Line type="monotone" dataKey="cpu_utilization" name="CPU" stroke="var(--chart-accent)" strokeWidth={2.5} dot={false} connectNulls activeDot={{ r: 4, fill: 'var(--chart-accent)', stroke: 'var(--bg)' }} />}
                     {memoryAvailable && (metricView === 'memory' || metricView === 'both') && <Line type="monotone" dataKey="memory_utilization" name="Memory" stroke="var(--chart-memory)" strokeWidth={2.5} dot={false} connectNulls activeDot={{ r: 4, fill: 'var(--chart-memory)', stroke: 'var(--bg)' }} />}
