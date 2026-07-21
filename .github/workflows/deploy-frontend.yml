@@ -22,7 +22,6 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     env:
       VITE_API_URL: ${{ vars.VITE_API_URL }}
-      VITE_ENABLE_AWS_MUTATIONS: ${{ vars.VITE_ENABLE_AWS_MUTATIONS || 'false' }}
     defaults:
       run:
         working-directory: frontend

@@ -266,6 +266,12 @@ def root():
     return {"status": "DeMarcate API running"}
 
 
+@app.get("/capabilities")
+def capabilities():
+    """Expose safe, non-secret runtime capabilities to the frontend."""
+    return {"aws_mutations_enabled": AWS_MUTATIONS_ENABLED}
+
+
 @app.post("/connect-aws")
 def connect_aws(credentials: AWSCredentials):
     """Validate and temporarily activate a user's AWS credentials."""

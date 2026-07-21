@@ -19,8 +19,6 @@ import LearnAWS from './LearnAWS.jsx'
 import './index.css'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-const AWS_MUTATIONS_ENABLED = import.meta.env.VITE_ENABLE_AWS_MUTATIONS === 'true'
-
 const DEMO_ROWS = [
   {
     instance_id: 'server_6', current_type: 't3.medium', recommended_type: 't3.small',
@@ -275,6 +273,8 @@ function App() {
   const [metricLoading, setMetricLoading] = useState(false)
   const [metricView, setMetricView] = useState('both')
   const [darkMode, setDarkMode] = useState(() => window.localStorage.getItem('demarcate-theme') === 'dark')
+  const [apiState, setApiState] = useState('demo')
+  const [awsMutationsEnabled, setAwsMutationsEnabled] = useState(false)
   const detailPickerRef = useRef(null)
   const toastTimeoutRef = useRef(null)
   const applyAnchorRef = useRef(null)
@@ -301,9 +301,12 @@ function App() {
         fetchWithTimeout(`${API_BASE}/recommendations`),
       ])
       if (!instancesResponse.ok || !recommendationsResponse.ok) throw new Error('API unavailable')
+      const capabilitiesResponse = await fetchWithTimeout(`${API_BASE}/capabilities`)
       const [instances, recommendations] = await Promise.all([
         instancesResponse.json(), recommendationsResponse.json(),
       ])
+      const capabilities = capabilitiesResponse.ok ? await capabilitiesResponse.json() : {}
+      setAwsMutationsEnabled(capabilities.aws_mutations_enabled === true)
       const instanceMap = Object.fromEntries(instances.map((instance) => [instance.instance_id, instance]))
       const nextRows = recommendations.map((recommendation) => ({
         ...recommendation,
@@ -315,6 +318,7 @@ function App() {
       }
       return true
     } catch {
+      setAwsMutationsEnabled(false)
       setApiState('demo')
       return false
     }
@@ -572,6 +576,8 @@ function App() {
     setConnectOpen(false)
   }
 
+  const debugMode = new URLSearchParams(window.location.search).has('debug')
+
   const popoverPosition = applyPopoverPosition || { top: 110, right: 20 }
 
   if (connectOpen) {
@@ -585,6 +591,13 @@ function App() {
   return (
     <div className="app-shell">
       {toast && <div className={`apply-toast ${toast.type}`} role="status"><span>{toast.message}</span><button type="button" onClick={() => setToast(null)} aria-label="Dismiss notification">×</button></div>}
+      {debugMode && <aside className="debug-panel" role="status">
+        <strong>DeMarcate debug</strong>
+        <span>Backend mutations: {awsMutationsEnabled ? 'ENABLED' : 'DISABLED'}</span>
+        <span>API state: {apiState}</span>
+        <span>Safe AWS rows: {rows.filter((row) => row.instance_id.startsWith('i-') && effectiveVerdict(row) === 'safe_to_downsize').length}</span>
+        <pre>{rows.map((row) => `${row.instance_id} | recommendation=${row.recommendation || 'none'} | verdict=${row.final_verdict || 'none'}`).join('\n')}</pre>
+      </aside>}
       <header className="headbar">
         <div className="headbar-inner">
           <a className="header-pill brand-pill h-12 px-4 rounded-[56px]" href="#overview" onClick={() => handleNav('overview')}>
@@ -706,7 +719,7 @@ function App() {
                           <td><div className="recommendation-cell"><code>{row.recommended_type}</code>{row.recommendation === 'downsize' && <span className={verdict === 'hold_off' && guardrailEnabled ? 'hold-label' : 'resize-label'}>{verdict === 'hold_off' && guardrailEnabled ? 'hold' : 'resize'}</span>}</div></td>
                           <td><strong className={savings ? 'savings-value' : 'muted-value'}>{savings ? `+${formatCurrency(savings)}` : '—'}</strong></td>
                           <td><span className={`risk-badge ${meta.tone}`}><span className="risk-dot" aria-hidden="true" />{meta.label}</span></td>
-                          <td><div className="table-actions">{AWS_MUTATIONS_ENABLED && row.final_verdict === 'safe_to_downsize' && <button type="button" className="apply-row-button" disabled={applyLoading} onClick={(event) => { event.preventDefault(); openApplyPopover(event, row) }}>Apply</button>}<button type="button" className="row-arrow" aria-label={`Open ${row.instance_id}`}><Icon name="arrow" size={15} /></button></div></td>
+                          <td><div className="table-actions">{awsMutationsEnabled && row.final_verdict === 'safe_to_downsize' && <button type="button" className="apply-row-button" disabled={applyLoading} onClick={(event) => { event.preventDefault(); openApplyPopover(event, row) }}>Apply</button>}<button type="button" className="row-arrow" aria-label={`Open ${row.instance_id}`}><Icon name="arrow" size={15} /></button></div></td>
                         </tr>
                       )
                     })}
